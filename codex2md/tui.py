@@ -4,12 +4,12 @@ from dataclasses import dataclass
 import calendar
 import os
 from pathlib import Path
-import subprocess
+import pydoc
 from typing import Iterable, Sequence
 
 from .config import Settings, configure_logging
 from .discover import discover_sessions
-from .export_md import ExportOptions, export_session_markdown
+from .export_md import ExportOptions, export_session_markdown, session_to_markdown
 from .filters import filter_sessions, sort_sessions
 from .models import Session, SessionInfo
 from .parser import parse_session
@@ -271,18 +271,15 @@ def _session_list_menu(state: TuiState, sessions: Iterable[SessionInfo], breadcr
 def _session_action_menu(state: TuiState, session_info: SessionInfo, breadcrumb: list[str]) -> str | None:
     while True:
         options = [
-            ("export_default", "Export Markdown (default)"),
-            ("export_tools", "Export Markdown (with tools)"),
-            ("export_diagnostics", "Export Markdown (include diagnostics)"),
-            ("open", "Open source JSONL in editor"),
-            ("metadata", "Show metadata"),
+            ("export_default", "Export Markdown"),
+            ("preview", "Show Markdown preview"),
         ]
         choice = _prompt_choice(_format_breadcrumb(breadcrumb), options)
         if choice in ("back", "quit"):
             return choice
-        if choice in ("export_default", "export_tools", "export_diagnostics"):
+        if choice == "export_default":
             session = parse_session(session_info.path)
-            options = _resolve_export_options(state.settings, choice)
+            options = _resolve_export_options(state.settings)
             out_dir = _prompt_output_dir(state.settings)
             if out_dir in (None, "back"):
                 continue
@@ -295,30 +292,14 @@ def _session_action_menu(state: TuiState, session_info: SessionInfo, breadcrumb:
             export_session_markdown(session, options, out_path)
             _show_message(_format_breadcrumb(breadcrumb), f"Exported to {out_path}")
             continue
-        if choice == "open":
-            _open_in_editor(session_info.path)
-            continue
-        if choice == "metadata":
+        if choice == "preview":
             session = parse_session(session_info.path)
-            _print_session_metadata(session)
+            options = _resolve_export_options(state.settings)
+            _show_markdown_preview(_format_breadcrumb(breadcrumb), session, options)
             continue
 
 
-def _resolve_export_options(settings: Settings, choice: str) -> ExportOptions:
-    if choice == "export_tools":
-        return ExportOptions(
-            include_tools=True,
-            include_reasoning=settings.include_reasoning,
-            include_diagnostics=settings.include_diagnostics,
-            redact_paths=settings.redact_paths,
-        )
-    if choice == "export_diagnostics":
-        return ExportOptions(
-            include_tools=settings.include_tools,
-            include_reasoning=settings.include_reasoning,
-            include_diagnostics=True,
-            redact_paths=settings.redact_paths,
-        )
+def _resolve_export_options(settings: Settings) -> ExportOptions:
     return ExportOptions(
         include_tools=settings.include_tools,
         include_reasoning=settings.include_reasoning,
@@ -356,41 +337,12 @@ def _confirm_overwrite(path: Path) -> bool:
             return False
 
 
-def _open_in_editor(path: Path) -> None:
-    editor = os.environ.get("EDITOR")
-    if not editor:
-        editor = "vi"
-    try:
-        subprocess.run([editor, str(path)], check=False)
-    except Exception as exc:
-        logger.warning("failed to open editor: %s", exc)
-        print(f"Failed to open editor: {exc}")
-
-
-def _print_session_metadata(session: Session) -> None:
+def _show_markdown_preview(title: str, session: Session, options: ExportOptions) -> None:
+    content = session_to_markdown(session, options)
     _clear_screen()
-    print(f"Session: {session.session_id or session.path.name}")
-    print(f"Started: {format_timestamp(session.started_at) or 'unknown'}")
-    print(f"CWD: {session.cwd or 'unknown'}")
-    if session.repo_url:
-        print(f"Repo: {session.repo_url}")
-    if session.branch:
-        print(f"Branch: {session.branch}")
-    if session.commit_hash:
-        print(f"Commit: {session.commit_hash}")
-    if session.originator:
-        print(f"Originator: {session.originator}")
-    if session.cli_version:
-        print(f"CLI version: {session.cli_version}")
-    if session.ghost_commit:
-        print(f"Ghost commit: {session.ghost_commit}")
-    if session.parse_warnings:
-        print("Warnings:")
-        for warning in session.parse_warnings[:10]:
-            print(f"- {warning}")
-        if len(session.parse_warnings) > 10:
-            print("- ...")
-    input("Press Enter to continue...")
+    print(title)
+    print("")
+    pydoc.pager(content)
 
 
 def _clear_screen() -> None:
