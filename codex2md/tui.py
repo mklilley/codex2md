@@ -443,7 +443,7 @@ def _prompt_text(
             print(hint)
         try:
             if HAS_PROMPT_TOOLKIT:
-                raw = prompt(prompt_label, default=default or "")
+                raw = prompt(prompt_label)
             else:
                 raw = input(prompt_label)
         except (EOFError, KeyboardInterrupt):
