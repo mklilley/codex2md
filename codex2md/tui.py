@@ -17,7 +17,6 @@ from .utils import format_timestamp
 
 logger = configure_logging()
 
-HELP_TEXT = "Enter a number to select, 'b' to go back, 'q' to quit, '?' for help."
 
 
 @dataclass
@@ -67,6 +66,8 @@ def _main_menu(state: TuiState) -> str:
             result = _export_last_n(state)
         elif choice == 5:
             result = _settings_menu(state)
+        elif choice == 6:
+            return "quit"
         else:
             result = None
         if result == "quit":
@@ -162,6 +163,7 @@ def _search_sessions(state: TuiState) -> str | None:
         return "back"
     while True:
         _print_header(["Search"])
+        _print_nav_hint()
         query = input("Search term (or 'b' to go back): ").strip()
         if not query:
             print("Enter a search term or 'b' to go back.")
@@ -182,6 +184,7 @@ def _search_sessions(state: TuiState) -> str | None:
 def _export_last_n(state: TuiState) -> str | None:
     while True:
         _print_header(["Export", "Last N"])
+        _print_nav_hint()
         raw = input("How many sessions to export? ").strip()
         if raw.lower() in ("b", "back"):
             return "back"
@@ -397,6 +400,7 @@ def _print_session_metadata(session: Session) -> None:
 
 
 def _prompt_choice(max_index: int) -> int | str:
+    _print_nav_hint()
     while True:
         raw = input("Select: ").strip()
         if not raw:
@@ -407,9 +411,6 @@ def _prompt_choice(max_index: int) -> int | str:
             return "back"
         if lowered in ("q", "quit"):
             return "quit"
-        if lowered == "?":
-            print(HELP_TEXT)
-            continue
         if raw.isdigit():
             value = int(raw)
             if 1 <= value <= max_index:
@@ -419,6 +420,11 @@ def _prompt_choice(max_index: int) -> int | str:
 
 def _print_header(breadcrumb: list[str]) -> None:
     print("\n" + " > ".join(breadcrumb))
+
+
+def _print_nav_hint() -> None:
+    print("")
+    print("b = back | q = quit")
 
 
 def _format_session_line(session: SessionInfo) -> str:
