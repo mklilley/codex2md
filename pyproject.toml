@@ -9,7 +9,9 @@ description = "Export Codex session rollouts to Markdown"
 readme = "README.md"
 requires-python = ">=3.10"
 
-dependencies = []
+dependencies = [
+    "prompt_toolkit>=3.0",
+]
 
 [project.scripts]
 codex2md = "codex2md.cli:main"

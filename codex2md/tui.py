@@ -5,7 +5,7 @@ import calendar
 import os
 from pathlib import Path
 import subprocess
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from .config import Settings, configure_logging
 from .discover import discover_sessions
@@ -16,6 +16,18 @@ from .parser import parse_session
 from .utils import format_timestamp
 
 logger = configure_logging()
+
+try:
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout
+    from prompt_toolkit.layout.containers import HSplit
+    from prompt_toolkit.widgets import Label, RadioList
+    from prompt_toolkit.shortcuts import prompt
+
+    HAS_PROMPT_TOOLKIT = True
+except Exception:
+    HAS_PROMPT_TOOLKIT = False
 
 
 
@@ -43,31 +55,33 @@ def run_tui() -> int:
 
 def _main_menu(state: TuiState) -> str:
     while True:
-        _print_header(["Main"])
-        print(f"Sessions found: {len(state.sessions)}")
-        print("1. Browse by date")
-        print("2. Browse by working directory")
-        print("3. Search")
-        print("4. Export last N sessions")
-        print("5. Settings")
-        print("6. Quit")
-        choice = _prompt_choice(6)
+        options = [
+            ("date", "Browse by date"),
+            ("cwd", "Browse by working directory"),
+            ("search", "Search"),
+            ("export_last", "Export last N sessions"),
+            ("settings", "Settings"),
+            ("quit", "Quit"),
+        ]
+        choice = _prompt_choice(
+            "Main",
+            options,
+            allow_back=False,
+            allow_quit=True,
+            header_lines=[f"Sessions found: {len(state.sessions)}"],
+        )
         if choice == "quit":
             return "quit"
-        if choice == "back":
-            continue
-        if choice == 1:
+        if choice == "date":
             result = _browse_by_date(state)
-        elif choice == 2:
+        elif choice == "cwd":
             result = _browse_by_cwd(state)
-        elif choice == 3:
+        elif choice == "search":
             result = _search_sessions(state)
-        elif choice == 4:
+        elif choice == "export_last":
             result = _export_last_n(state)
-        elif choice == 5:
+        elif choice == "settings":
             result = _settings_menu(state)
-        elif choice == 6:
-            return "quit"
         else:
             result = None
         if result == "quit":
@@ -76,8 +90,7 @@ def _main_menu(state: TuiState) -> str:
 
 def _browse_by_date(state: TuiState) -> str | None:
     if not state.sessions:
-        _print_header(["Date"])
-        print("No sessions found.")
+        _show_message("Date", "No sessions found.")
         return "back"
     year_groups: dict[str, list[SessionInfo]] = {}
     for session in state.sessions:
@@ -89,13 +102,11 @@ def _browse_by_date(state: TuiState) -> str | None:
 
     years = sorted(year_groups.keys(), key=lambda y: (y == "Unknown", y))
     while True:
-        _print_header(["Date"])
-        for idx, year in enumerate(years, start=1):
-            print(f"{idx}. {year} ({len(year_groups[year])})")
-        choice = _prompt_choice(len(years))
+        options = [(year, f"{year} ({len(year_groups[year])})") for year in years]
+        choice = _prompt_choice("Date", options)
         if choice in ("back", "quit"):
             return choice
-        selected = years[choice - 1]
+        selected = choice
         sessions = year_groups[selected]
         if selected == "Unknown":
             result = _session_list_menu(state, sessions, ["Date", "Unknown"])
@@ -113,17 +124,16 @@ def _browse_by_month(state: TuiState, year: int, sessions: list[SessionInfo]) ->
         month_groups.setdefault(session.month, []).append(session)
     months = sorted(month_groups.keys())
     while True:
-        _print_header(["Date", str(year)])
         if not months:
-            print("No sessions for this year.")
+            _show_message(f"Date > {year}", "No sessions for this year.")
             return "back"
-        for idx, month in enumerate(months, start=1):
-            name = calendar.month_name[month]
-            print(f"{idx}. {name} ({len(month_groups[month])})")
-        choice = _prompt_choice(len(months))
+        options = [
+            (month, f"{calendar.month_name[month]} ({len(month_groups[month])})") for month in months
+        ]
+        choice = _prompt_choice(f"Date > {year}", options)
         if choice in ("back", "quit"):
             return choice
-        month = months[choice - 1]
+        month = choice
         name = calendar.month_name[month]
         result = _session_list_menu(state, month_groups[month], ["Date", str(year), name])
         if result == "quit":
@@ -132,8 +142,7 @@ def _browse_by_month(state: TuiState, year: int, sessions: list[SessionInfo]) ->
 
 def _browse_by_cwd(state: TuiState) -> str | None:
     if not state.sessions:
-        _print_header(["Working directory"])
-        print("No sessions found.")
+        _show_message("Working directory", "No sessions found.")
         return "back"
     cwd_groups: dict[str, list[SessionInfo]] = {}
     for session in state.sessions:
@@ -142,15 +151,13 @@ def _browse_by_cwd(state: TuiState) -> str | None:
     cwds = sorted(cwd_groups.keys(), key=lambda value: value.lower())
 
     while True:
-        _print_header(["Working directory"])
-        for idx, cwd in enumerate(cwds, start=1):
-            label = _shorten_text(cwd, 60)
-            count = len(cwd_groups[cwd])
-            print(f"{idx}. {label} ({count})")
-        choice = _prompt_choice(len(cwds))
+        options = [
+            (cwd, f"{_shorten_text(cwd, 60)} ({len(cwd_groups[cwd])})") for cwd in cwds
+        ]
+        choice = _prompt_choice("Working directory", options)
         if choice in ("back", "quit"):
             return choice
-        cwd = cwds[choice - 1]
+        cwd = choice
         result = _session_list_menu(state, cwd_groups[cwd], ["Working directory", cwd])
         if result == "quit":
             return "quit"
@@ -158,23 +165,18 @@ def _browse_by_cwd(state: TuiState) -> str | None:
 
 def _search_sessions(state: TuiState) -> str | None:
     if not state.sessions:
-        _print_header(["Search"])
-        print("No sessions found.")
+        _show_message("Search", "No sessions found.")
         return "back"
     while True:
-        _print_header(["Search"])
-        _print_nav_hint()
-        query = input("Search term (or 'b' to go back): ").strip()
+        query = _prompt_text("Search", "Search term")
+        if query in ("back", "quit"):
+            return query
         if not query:
-            print("Enter a search term or 'b' to go back.")
+            _show_message("Search", "Enter a search term or use 'b' to go back.")
             continue
-        if query.lower() == "b":
-            return "back"
-        if query.lower() == "q":
-            return "quit"
         results = filter_sessions(state.sessions, query=query)
         if not results:
-            print("No matches. Try another query.")
+            _show_message("Search", "No matches. Try another query.")
             continue
         result = _session_list_menu(state, results, ["Search", query])
         if result == "quit":
@@ -183,23 +185,19 @@ def _search_sessions(state: TuiState) -> str | None:
 
 def _export_last_n(state: TuiState) -> str | None:
     while True:
-        _print_header(["Export", "Last N"])
-        _print_nav_hint()
-        raw = input("How many sessions to export? ").strip()
-        if raw.lower() in ("b", "back"):
-            return "back"
-        if raw.lower() in ("q", "quit"):
-            return "quit"
-        if not raw.isdigit():
-            print("Enter a number.")
+        raw = _prompt_text("Export > Last N", "How many sessions to export?")
+        if raw in ("back", "quit"):
+            return raw
+        if not raw or not raw.isdigit():
+            _show_message("Export > Last N", "Enter a number.")
             continue
         count = int(raw)
         if count <= 0:
-            print("Enter a positive number.")
+            _show_message("Export > Last N", "Enter a positive number.")
             continue
         sessions = sort_sessions(state.sessions)[:count]
         if not sessions:
-            print("No sessions available.")
+            _show_message("Export > Last N", "No sessions available.")
             return "back"
         out_dir = _prompt_output_dir(state.settings)
         if out_dir in (None, "back"):
@@ -219,52 +217,51 @@ def _export_last_n(state: TuiState) -> str | None:
             out_path = out_dir_path / _make_export_filename(session)
             export_session_markdown(session, options, out_path)
             exported += 1
-        print(f"Exported {exported} sessions to {out_dir_path}")
+        _show_message("Export > Last N", f"Exported {exported} sessions to {out_dir_path}")
         return "back"
 
 
 def _settings_menu(state: TuiState) -> str | None:
     settings = state.settings
     while True:
-        _print_header(["Settings"])
-        print(f"1. Include tools: {settings.include_tools}")
-        print(f"2. Include reasoning summary: {settings.include_reasoning}")
-        print(f"3. Include diagnostics (warnings + skipped events): {settings.include_diagnostics}")
-        print(f"4. Redact paths: {settings.redact_paths}")
-        print(f"5. Default output directory: {settings.output_dir or Path.cwd()}")
-        print("6. Back")
-        choice = _prompt_choice(6)
+        options = [
+            ("tools", f"Include tools: {settings.include_tools}"),
+            ("reasoning", f"Include reasoning summary: {settings.include_reasoning}"),
+            (
+                "diagnostics",
+                f"Include diagnostics (warnings + skipped events): {settings.include_diagnostics}",
+            ),
+            ("redact", f"Redact paths: {settings.redact_paths}"),
+            ("output_dir", f"Default output directory: {settings.output_dir or Path.cwd()}"),
+        ]
+        choice = _prompt_choice("Settings", options)
         if choice in ("back", "quit"):
             return choice
-        if choice == 1:
+        if choice == "tools":
             settings.include_tools = not settings.include_tools
-        elif choice == 2:
+        elif choice == "reasoning":
             settings.include_reasoning = not settings.include_reasoning
-        elif choice == 3:
+        elif choice == "diagnostics":
             settings.include_diagnostics = not settings.include_diagnostics
-        elif choice == 4:
+        elif choice == "redact":
             settings.redact_paths = not settings.redact_paths
-        elif choice == 5:
+        elif choice == "output_dir":
             result = _prompt_output_dir(settings)
             if result == "quit":
                 return "quit"
-        elif choice == 6:
-            return "back"
 
 
 def _session_list_menu(state: TuiState, sessions: Iterable[SessionInfo], breadcrumb: list[str]) -> str | None:
     session_list = sort_sessions(list(sessions))
     while True:
-        _print_header(breadcrumb)
         if not session_list:
-            print("No sessions found.")
+            _show_message(_format_breadcrumb(breadcrumb), "No sessions found.")
             return "back"
-        for idx, session in enumerate(session_list, start=1):
-            print(f"{idx}. {_format_session_line(session)}")
-        choice = _prompt_choice(len(session_list))
+        options = [(idx, _format_session_line(session)) for idx, session in enumerate(session_list)]
+        choice = _prompt_choice(_format_breadcrumb(breadcrumb), options)
         if choice in ("back", "quit"):
             return choice
-        selected = session_list[choice - 1]
+        selected = session_list[choice]
         label = selected.session_id or selected.path.name
         result = _session_action_menu(state, selected, breadcrumb + [label])
         if result == "quit":
@@ -273,19 +270,17 @@ def _session_list_menu(state: TuiState, sessions: Iterable[SessionInfo], breadcr
 
 def _session_action_menu(state: TuiState, session_info: SessionInfo, breadcrumb: list[str]) -> str | None:
     while True:
-        _print_header(breadcrumb)
-        print("1. Export Markdown (default)")
-        print("2. Export Markdown (with tools)")
-        print("3. Export Markdown (include diagnostics)")
-        print("4. Open source JSONL in editor")
-        print("5. Show metadata")
-        print("6. Back")
-        choice = _prompt_choice(6)
+        options = [
+            ("export_default", "Export Markdown (default)"),
+            ("export_tools", "Export Markdown (with tools)"),
+            ("export_diagnostics", "Export Markdown (include diagnostics)"),
+            ("open", "Open source JSONL in editor"),
+            ("metadata", "Show metadata"),
+        ]
+        choice = _prompt_choice(_format_breadcrumb(breadcrumb), options)
         if choice in ("back", "quit"):
             return choice
-        if choice == 6:
-            return "back"
-        if choice in (1, 2, 3):
+        if choice in ("export_default", "export_tools", "export_diagnostics"):
             session = parse_session(session_info.path)
             options = _resolve_export_options(state.settings, choice)
             out_dir = _prompt_output_dir(state.settings)
@@ -298,26 +293,26 @@ def _session_action_menu(state: TuiState, session_info: SessionInfo, breadcrumb:
             if out_path.exists() and not _confirm_overwrite(out_path):
                 continue
             export_session_markdown(session, options, out_path)
-            print(f"Exported to {out_path}")
+            _show_message(_format_breadcrumb(breadcrumb), f"Exported to {out_path}")
             continue
-        if choice == 4:
+        if choice == "open":
             _open_in_editor(session_info.path)
             continue
-        if choice == 5:
+        if choice == "metadata":
             session = parse_session(session_info.path)
             _print_session_metadata(session)
             continue
 
 
-def _resolve_export_options(settings: Settings, choice: int) -> ExportOptions:
-    if choice == 2:
+def _resolve_export_options(settings: Settings, choice: str) -> ExportOptions:
+    if choice == "export_tools":
         return ExportOptions(
             include_tools=True,
             include_reasoning=settings.include_reasoning,
             include_diagnostics=settings.include_diagnostics,
             redact_paths=settings.redact_paths,
         )
-    if choice == 3:
+    if choice == "export_diagnostics":
         return ExportOptions(
             include_tools=settings.include_tools,
             include_reasoning=settings.include_reasoning,
@@ -342,16 +337,14 @@ def _make_export_filename(session: Session) -> str:
 
 def _prompt_output_dir(settings: Settings) -> Path | str | None:
     default_dir = settings.output_dir or Path.cwd()
-    raw = input(f"Output directory [{default_dir}]: ").strip()
-    if raw.lower() in ("b", "back"):
-        return "back"
-    if raw.lower() in ("q", "quit"):
-        return "quit"
-    if raw:
-        chosen = Path(raw).expanduser()
-        settings.output_dir = chosen
-        return chosen
-    return default_dir
+    raw = _prompt_text("Output directory", "Output directory", default=str(default_dir))
+    if raw in ("back", "quit"):
+        return raw
+    if raw is None:
+        return None
+    chosen = Path(raw).expanduser()
+    settings.output_dir = chosen
+    return chosen
 
 
 def _confirm_overwrite(path: Path) -> bool:
@@ -375,6 +368,7 @@ def _open_in_editor(path: Path) -> None:
 
 
 def _print_session_metadata(session: Session) -> None:
+    _clear_screen()
     print(f"Session: {session.session_id or session.path.name}")
     print(f"Started: {format_timestamp(session.started_at) or 'unknown'}")
     print(f"CWD: {session.cwd or 'unknown'}")
@@ -399,32 +393,140 @@ def _print_session_metadata(session: Session) -> None:
     input("Press Enter to continue...")
 
 
-def _prompt_choice(max_index: int) -> int | str:
-    _print_nav_hint()
+def _clear_screen() -> None:
+    print("\033[2J\033[H", end="")
+
+
+def _format_breadcrumb(breadcrumb: Sequence[str] | str) -> str:
+    if isinstance(breadcrumb, str):
+        return breadcrumb
+    return " > ".join(breadcrumb)
+
+
+def _nav_hint(allow_back: bool, allow_quit: bool) -> str:
+    if allow_back and allow_quit:
+        return "b = back | q = quit"
+    if allow_back:
+        return "b = back"
+    if allow_quit:
+        return "q = quit"
+    return ""
+
+
+def _show_message(title: Sequence[str] | str, message: str) -> None:
+    _clear_screen()
+    print(_format_breadcrumb(title))
+    print("")
+    print(message)
+    input("Press Enter to continue...")
+
+
+def _prompt_text(
+    title: Sequence[str] | str,
+    prompt_text: str,
+    *,
+    default: str | None = None,
+    allow_back: bool = True,
+    allow_quit: bool = True,
+) -> str | None:
+    title_text = _format_breadcrumb(title)
+    hint = _nav_hint(allow_back, allow_quit)
+    prompt_label = prompt_text
+    if default:
+        prompt_label += f" [{default}]"
+    prompt_label += ": "
+    while True:
+        _clear_screen()
+        print(title_text)
+        if hint:
+            print("")
+            print(hint)
+        try:
+            if HAS_PROMPT_TOOLKIT:
+                raw = prompt(prompt_label, default=default or "")
+            else:
+                raw = input(prompt_label)
+        except (EOFError, KeyboardInterrupt):
+            return "quit"
+        raw = raw.strip()
+        if not raw and default is not None:
+            raw = str(default)
+        lowered = raw.lower()
+        if allow_back and lowered in ("b", "back"):
+            return "back"
+        if allow_quit and lowered in ("q", "quit"):
+            return "quit"
+        return raw
+
+
+def _prompt_choice(
+    title: Sequence[str] | str,
+    options: list[tuple[object, str]],
+    *,
+    allow_back: bool = True,
+    allow_quit: bool = True,
+    header_lines: list[str] | None = None,
+) -> object | str:
+    if not options:
+        return "back"
+    title_text = _format_breadcrumb(title)
+    hint = _nav_hint(allow_back, allow_quit)
+    if HAS_PROMPT_TOOLKIT:
+        radio = RadioList(options)
+        kb = KeyBindings()
+
+        @kb.add("enter", eager=True)
+        def _select(event) -> None:
+            radio._handle_enter()
+            event.app.exit(result=radio.current_value)
+
+        if allow_back:
+            @kb.add("b", eager=True)
+            @kb.add("escape", eager=True)
+            def _go_back(event) -> None:
+                event.app.exit(result="back")
+
+        if allow_quit:
+            @kb.add("q", eager=True)
+            @kb.add("c-c", eager=True)
+            def _go_quit(event) -> None:
+                event.app.exit(result="quit")
+
+        rows: list[Label | RadioList] = [Label(title_text)]
+        for line in header_lines or []:
+            rows.append(Label(line))
+        rows.append(Label(""))
+        rows.append(radio)
+        if hint:
+            rows.append(Label(""))
+            rows.append(Label(hint))
+        app = Application(layout=Layout(HSplit(rows)), key_bindings=kb, full_screen=True)
+        return app.run()
+
+    _clear_screen()
+    print(title_text)
+    for line in header_lines or []:
+        print(line)
+    for idx, (_, label) in enumerate(options, start=1):
+        print(f"{idx}. {label}")
+    if hint:
+        print("")
+        print(hint)
     while True:
         raw = input("Select: ").strip()
         if not raw:
-            print("Enter a number, 'b' to go back, or 'q' to quit.")
+            print("Enter a number or use the navigation keys.")
             continue
         lowered = raw.lower()
-        if lowered in ("b", "back"):
+        if allow_back and lowered in ("b", "back"):
             return "back"
-        if lowered in ("q", "quit"):
+        if allow_quit and lowered in ("q", "quit"):
             return "quit"
         if raw.isdigit():
             value = int(raw)
-            if 1 <= value <= max_index:
-                return value
+            if 1 <= value <= len(options):
+                return options[value - 1][0]
         print("Invalid input. Enter a valid option.")
-
-
-def _print_header(breadcrumb: list[str]) -> None:
-    print("\n" + " > ".join(breadcrumb))
-
-
-def _print_nav_hint() -> None:
-    print("")
-    print("b = back | q = quit")
 
 
 def _format_session_line(session: SessionInfo) -> str:
