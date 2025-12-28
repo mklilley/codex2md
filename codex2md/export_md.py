@@ -11,8 +11,8 @@ from .utils import format_timestamp
 @dataclass
 class ExportOptions:
     include_tools: bool = False
-    messages_only: bool = False
     include_reasoning: bool = True
+    include_diagnostics: bool = False
     redact_paths: bool = False
 
 
@@ -57,7 +57,7 @@ def _format_header(session: Session, options: ExportOptions) -> list[str]:
     if options.redact_paths:
         source_path = _redact_text(source_path, Path.home())
     lines.append(f"- Source: {source_path}")
-    if session.parse_warnings:
+    if options.include_diagnostics and session.parse_warnings:
         lines.append(f"- Warnings: {len(session.parse_warnings)}")
     lines.append("")
     return lines
@@ -66,6 +66,7 @@ def _format_header(session: Session, options: ExportOptions) -> list[str]:
 _REQUEST_HEADING_RE = re.compile(r"^#{1,6}\s*My request for Codex\s*:?\s*$", re.IGNORECASE)
 _FILES_MENTIONED_HEADING_RE = re.compile(r"^#{1,6}\s*Files mentioned by the user\s*:?\s*$", re.IGNORECASE)
 _ENVIRONMENT_CONTEXT_BLOCK_RE = re.compile(r"<environment_context>.*?</environment_context>", re.DOTALL | re.IGNORECASE)
+_AGENTS_HEADER_RE = re.compile(r"^#?\s*AGENTS\.md instructions\b.*$", re.IGNORECASE)
 _REASONING_SPLIT_RE = re.compile(r"^([^:]{1,80})\s*:\s*(.+)$")
 
 
@@ -111,12 +112,39 @@ def _parse_files_mentioned(lines: list[str]) -> list[str]:
     return unique
 
 
+def _strip_agents_instructions(text: str) -> str:
+    lines = text.splitlines()
+    output: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if _AGENTS_HEADER_RE.match(line.strip()):
+            idx += 1
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            if idx < len(lines) and lines[idx].strip().lower() == "<instructions>":
+                idx += 1
+                while idx < len(lines) and lines[idx].strip().lower() != "</instructions>":
+                    idx += 1
+                if idx < len(lines):
+                    idx += 1
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            continue
+        output.append(line)
+        idx += 1
+    return "\n".join(output)
+
+
 def _cleanup_user_message(text: str) -> str | None:
     cleaned = text
     stripped = cleaned.strip()
     if stripped.startswith("<environment_context>") and "</environment_context>" not in stripped:
         return None
     cleaned = _ENVIRONMENT_CONTEXT_BLOCK_RE.sub("", cleaned).strip()
+    if not cleaned:
+        return None
+    cleaned = _strip_agents_instructions(cleaned).strip()
     if not cleaned:
         return None
     cleaned = _cleanup_ide_context_user_message(cleaned).strip()
@@ -252,9 +280,6 @@ def session_to_markdown(session: Session, options: ExportOptions) -> str:
 
     def flush_reasoning_block() -> None:
         nonlocal pending_reasoning
-        if options.messages_only:
-            pending_reasoning = []
-            return
         if not options.include_reasoning:
             pending_reasoning = []
             return
@@ -282,14 +307,13 @@ def session_to_markdown(session: Session, options: ExportOptions) -> str:
                 target.extend(event.summary)
             continue
 
-        if options.messages_only:
-            continue
         if isinstance(event, ToolEvent):
             if options.include_tools:
                 lines.extend(_format_tool_event(event, options))
             continue
         if isinstance(event, MalformedEvent):
-            lines.extend(_format_malformed(event))
+            if options.include_diagnostics:
+                lines.extend(_format_malformed(event))
             continue
 
     if current_message_role == "assistant":
