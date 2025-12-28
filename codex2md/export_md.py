@@ -35,7 +35,7 @@ def _format_header(session: Session, options: ExportOptions) -> list[str]:
         cwd = session.cwd
         if options.redact_paths:
             cwd = _redact_text(cwd, Path.home())
-        lines.append(f"- CWD: {cwd}")
+        lines.append(f"- Folder: {cwd}")
     if session.repo_url:
         repo = session.repo_url
         if options.redact_paths:
@@ -46,12 +46,6 @@ def _format_header(session: Session, options: ExportOptions) -> list[str]:
             lines.append(f"- Repo: {repo}")
     if session.commit_hash:
         lines.append(f"- Commit: {session.commit_hash}")
-    if session.originator:
-        lines.append(f"- Originator: {session.originator}")
-    if session.cli_version:
-        lines.append(f"- CLI version: {session.cli_version}")
-    if session.ghost_commit:
-        lines.append(f"- Ghost commit: {session.ghost_commit}")
 
     source_path = str(session.path)
     if options.redact_paths:
