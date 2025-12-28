@@ -156,11 +156,10 @@ def _export_cmd(args: argparse.Namespace) -> int:
 
 def _format_session_line(session: SessionInfo) -> str:
     timestamp = format_timestamp(session.started_at) or "unknown"
-    label = session.session_id or session.path.name
-    cwd = session.cwd or "unknown"
+    cwd = _shorten_text(session.cwd or "unknown", 60)
     preview = session.preview or ""
     warning = f" !{session.warnings_count}" if session.warnings_count else ""
-    return f"{timestamp} | {label} | {cwd} | {preview}{warning}"
+    return f"{timestamp} | {cwd} | {preview}{warning}"
 
 
 def _make_export_filename(session) -> str:
@@ -169,6 +168,12 @@ def _make_export_filename(session) -> str:
     if not safe:
         safe = "session"
     return f"{safe}.md"
+
+
+def _shorten_text(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
 
 
 if __name__ == "__main__":

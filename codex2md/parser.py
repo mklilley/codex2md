@@ -15,7 +15,7 @@ from .models import (
     SessionInfo,
     ToolEvent,
 )
-from .utils import coerce_text, format_timestamp, parse_date_from_path, parse_timestamp, safe_json_loads
+from .utils import clean_user_message, coerce_text, format_timestamp, parse_date_from_path, parse_timestamp, safe_json_loads
 
 logger = configure_logging()
 
@@ -126,11 +126,15 @@ def _format_jsonish(value: Any) -> str | None:
     return str(value)
 
 
-def _make_preview(text: str, limit: int = 120) -> str:
+def _make_preview(text: str, max_chars: int = 60) -> str:
     trimmed = " ".join(text.strip().split())
-    if len(trimmed) <= limit:
+    if not trimmed:
+        return ""
+    if len(trimmed) <= max_chars:
         return trimmed
-    return trimmed[: limit - 3] + "..."
+    if max_chars <= 3:
+        return trimmed[:max_chars]
+    return trimmed[: max_chars - 3] + "..."
 
 
 def extract_metadata_and_preview_fast(path: Path, max_lines: int = 500) -> tuple[_FastMeta, str | None, int]:
@@ -172,13 +176,17 @@ def extract_metadata_and_preview_fast(path: Path, max_lines: int = 500) -> tuple
                     if payload.get("type") == "message" and payload.get("role") == "user":
                         text = _extract_message_text(payload)
                         if text:
-                            seen_message_texts.add(text)
-                            preview = _make_preview(text)
+                            cleaned = clean_user_message(text, include_files=False)
+                            if cleaned:
+                                seen_message_texts.add(cleaned)
+                                preview = _make_preview(cleaned)
                 elif record_type == "event_msg" and isinstance(payload, dict) and preview is None:
                     if payload.get("type") == "user_message":
                         text = _extract_event_user_message(payload)
-                        if text and text not in seen_message_texts:
-                            preview = _make_preview(text)
+                        if text:
+                            cleaned = clean_user_message(text, include_files=False)
+                            if cleaned and cleaned not in seen_message_texts:
+                                preview = _make_preview(cleaned)
     except OSError as exc:
         logger.warning("failed to read %s: %s", path, exc)
         warnings.append(f"failed to read file: {exc}")

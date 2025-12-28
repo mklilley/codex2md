@@ -262,7 +262,8 @@ def _session_list_menu(state: TuiState, sessions: Iterable[SessionInfo], breadcr
         if choice in ("back", "quit"):
             return choice
         selected = session_list[choice - 1]
-        result = _session_action_menu(state, selected, breadcrumb + [_label_session(selected)])
+        label = selected.session_id or selected.path.name
+        result = _session_action_menu(state, selected, breadcrumb + [label])
         if result == "quit":
             return "quit"
 
@@ -422,15 +423,10 @@ def _print_header(breadcrumb: list[str]) -> None:
 
 def _format_session_line(session: SessionInfo) -> str:
     timestamp = format_timestamp(session.started_at) or "unknown"
-    label = _label_session(session)
-    cwd = _shorten_text(session.cwd or "unknown", 40)
+    cwd = _shorten_text(session.cwd or "unknown", 60)
     preview = session.preview or ""
     warning = f" !{session.warnings_count}" if session.warnings_count else ""
-    return f"{timestamp} | {label} | {cwd} | {preview}{warning}"
-
-
-def _label_session(session: SessionInfo) -> str:
-    return session.session_id or session.path.name
+    return f"{timestamp} | {cwd} | {preview}{warning}"
 
 
 def _shorten_text(text: str, max_len: int) -> str:
