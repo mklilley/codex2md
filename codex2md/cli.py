@@ -41,11 +41,16 @@ def main(argv: list[str] | None = None) -> int:
     export_parser.add_argument(
         "--include-tools",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Include tool calls and outputs",
     )
     export_parser.add_argument("--messages-only", action="store_true", help="Export messages only")
-    export_parser.add_argument("--include-reasoning", action="store_true", help="Include reasoning summary")
+    export_parser.add_argument(
+        "--include-reasoning",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include reasoning summary",
+    )
     export_parser.add_argument("--redact-paths", action="store_true", help="Redact home paths")
 
     subparsers.add_parser("tui", help="Launch interactive menu")

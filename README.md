@@ -49,4 +49,5 @@ codex2md export --cwd "/Users/matt/Documents/GitHub/project" --out-dir ./exports
 ## Notes
 
 - The parser ignores unknown record types and skips malformed lines.
-- Reasoning summaries are exported only when requested and never decrypted.
+- Tool calls/outputs are not exported by default (`--include-tools` to include them).
+- Reasoning summaries are exported by default and never decrypted (`--no-include-reasoning` to omit).

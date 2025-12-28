@@ -11,9 +11,9 @@ LOG_FILE_NAME = "latest.log"
 
 @dataclass
 class Settings:
-    include_tools: bool = True
+    include_tools: bool = False
     messages_only: bool = False
-    include_reasoning: bool = False
+    include_reasoning: bool = True
     redact_paths: bool = False
     output_dir: Path | None = None
 
@@ -52,7 +52,11 @@ def configure_logging() -> logging.Logger:
         return logger
 
     log_path = log_dir / LOG_FILE_NAME
-    handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=5)
+    try:
+        handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=5)
+    except OSError:
+        logging.basicConfig(level=logging.INFO)
+        return logger
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
