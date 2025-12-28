@@ -206,8 +206,8 @@ def _export_last_n(state: TuiState) -> str | None:
         out_dir_path = Path(out_dir)
         options = ExportOptions(
             include_tools=state.settings.include_tools,
-            messages_only=state.settings.messages_only,
             include_reasoning=state.settings.include_reasoning,
+            include_diagnostics=state.settings.include_diagnostics,
             redact_paths=state.settings.redact_paths,
         )
         exported = 0
@@ -225,8 +225,8 @@ def _settings_menu(state: TuiState) -> str | None:
     while True:
         _print_header(["Settings"])
         print(f"1. Include tools: {settings.include_tools}")
-        print(f"2. Messages only: {settings.messages_only}")
-        print(f"3. Include reasoning summary: {settings.include_reasoning}")
+        print(f"2. Include reasoning summary: {settings.include_reasoning}")
+        print(f"3. Include diagnostics (warnings + skipped events): {settings.include_diagnostics}")
         print(f"4. Redact paths: {settings.redact_paths}")
         print(f"5. Default output directory: {settings.output_dir or Path.cwd()}")
         print("6. Back")
@@ -236,9 +236,9 @@ def _settings_menu(state: TuiState) -> str | None:
         if choice == 1:
             settings.include_tools = not settings.include_tools
         elif choice == 2:
-            settings.messages_only = not settings.messages_only
-        elif choice == 3:
             settings.include_reasoning = not settings.include_reasoning
+        elif choice == 3:
+            settings.include_diagnostics = not settings.include_diagnostics
         elif choice == 4:
             settings.redact_paths = not settings.redact_paths
         elif choice == 5:
@@ -272,7 +272,7 @@ def _session_action_menu(state: TuiState, session_info: SessionInfo, breadcrumb:
         _print_header(breadcrumb)
         print("1. Export Markdown (default)")
         print("2. Export Markdown (with tools)")
-        print("3. Export Markdown (messages only)")
+        print("3. Export Markdown (include diagnostics)")
         print("4. Open source JSONL in editor")
         print("5. Show metadata")
         print("6. Back")
@@ -309,21 +309,21 @@ def _resolve_export_options(settings: Settings, choice: int) -> ExportOptions:
     if choice == 2:
         return ExportOptions(
             include_tools=True,
-            messages_only=False,
             include_reasoning=settings.include_reasoning,
+            include_diagnostics=settings.include_diagnostics,
             redact_paths=settings.redact_paths,
         )
     if choice == 3:
         return ExportOptions(
-            include_tools=False,
-            messages_only=True,
-            include_reasoning=False,
+            include_tools=settings.include_tools,
+            include_reasoning=settings.include_reasoning,
+            include_diagnostics=True,
             redact_paths=settings.redact_paths,
         )
     return ExportOptions(
         include_tools=settings.include_tools,
-        messages_only=settings.messages_only,
         include_reasoning=settings.include_reasoning,
+        include_diagnostics=settings.include_diagnostics,
         redact_paths=settings.redact_paths,
     )
 

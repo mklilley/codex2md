@@ -44,12 +44,17 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Include tool calls and outputs",
     )
-    export_parser.add_argument("--messages-only", action="store_true", help="Export messages only")
     export_parser.add_argument(
         "--include-reasoning",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Include reasoning summary",
+    )
+    export_parser.add_argument(
+        "--include-diagnostics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Include warnings and skipped/malformed event notes",
     )
     export_parser.add_argument("--redact-paths", action="store_true", help="Redact home paths")
 
@@ -120,8 +125,8 @@ def _export_cmd(args: argparse.Namespace) -> int:
 
     options = ExportOptions(
         include_tools=args.include_tools,
-        messages_only=args.messages_only,
         include_reasoning=args.include_reasoning,
+        include_diagnostics=args.include_diagnostics,
         redact_paths=args.redact_paths,
     )
 

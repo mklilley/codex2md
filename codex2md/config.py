@@ -12,8 +12,8 @@ LOG_FILE_NAME = "latest.log"
 @dataclass
 class Settings:
     include_tools: bool = False
-    messages_only: bool = False
     include_reasoning: bool = True
+    include_diagnostics: bool = False
     redact_paths: bool = False
     output_dir: Path | None = None
 

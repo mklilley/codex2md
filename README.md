@@ -51,3 +51,4 @@ codex2md export --cwd "/Users/matt/Documents/GitHub/project" --out-dir ./exports
 - The parser ignores unknown record types and skips malformed lines.
 - Tool calls/outputs are not exported by default (`--include-tools` to include them).
 - Reasoning summaries are exported by default and never decrypted (`--no-include-reasoning` to omit).
+- Diagnostic notes about malformed/skipped events are off by default (`--include-diagnostics` to include them).
