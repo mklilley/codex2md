@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex2md"
+version = "0.1.0"
+description = "Export Codex session rollouts to Markdown"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = []
+
+[project.scripts]
+codex2md = "codex2md.cli:main"
