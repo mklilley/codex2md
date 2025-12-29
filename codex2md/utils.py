@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -189,3 +190,47 @@ def clean_user_message(text: str, *, include_files: bool = True) -> str | None:
     if not cleaned:
         return None
     return cleaned
+
+
+def _slugify_filename(value: str, fallback: str) -> str:
+    if not value:
+        return fallback
+    output: list[str] = []
+    last_dash = False
+    for ch in value.strip():
+        if ch.isascii() and (ch.isalnum() or ch in ("-", "_")):
+            output.append(ch)
+            last_dash = False
+            continue
+        if ch.isspace() or ch in (".",):
+            if not last_dash:
+                output.append("-")
+                last_dash = True
+            continue
+    slug = "".join(output).strip("-_")
+    return slug or fallback
+
+
+def build_export_basename(
+    started_at: datetime | None,
+    cwd: str | None,
+    fallback: str = "session",
+) -> str:
+    date_str = started_at.date().isoformat() if started_at else "unknown-date"
+    folder = Path(cwd).name if cwd else fallback
+    slug = _slugify_filename(folder, fallback)
+    return f"{date_str}-{slug}"
+
+
+def build_export_filenames(bases: list[str]) -> list[str]:
+    counts = Counter(bases)
+    indices: dict[str, int] = {}
+    filenames: list[str] = []
+    for base in bases:
+        if counts[base] > 1:
+            indices[base] = indices.get(base, 0) + 1
+            suffix = f"-{indices[base]:02d}"
+        else:
+            suffix = ""
+        filenames.append(f"{base}{suffix}.md")
+    return filenames

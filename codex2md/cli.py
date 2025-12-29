@@ -10,7 +10,7 @@ from .filters import filter_sessions, sort_sessions
 from .models import SessionInfo
 from .parser import parse_session
 from .tui import run_tui
-from .utils import format_timestamp
+from .utils import build_export_basename, build_export_filenames, format_timestamp
 
 logger = configure_logging()
 
@@ -140,16 +140,22 @@ def _export_cmd(args: argparse.Namespace) -> int:
     if not out_dir:
         out_dir = Path.cwd()
 
+    sessions = [parse_session(path) for path in targets]
+    if out_path:
+        session = sessions[0]
+        export_session_markdown(session, options, out_path)
+        print(f"Exported {session.path} -> {out_path}")
+        return 0
+
+    bases = [build_export_basename(s.started_at, s.cwd) for s in sessions]
+    filenames = build_export_filenames(bases)
+
     exported = 0
-    for path in targets:
-        session = parse_session(path)
-        if out_path:
-            target_path = out_path
-        else:
-            target_path = out_dir / _make_export_filename(session)
+    for session, filename in zip(sessions, filenames, strict=True):
+        target_path = out_dir / filename
         export_session_markdown(session, options, target_path)
         exported += 1
-        print(f"Exported {path} -> {target_path}")
+        print(f"Exported {session.path} -> {target_path}")
 
     return 0
 
@@ -160,14 +166,6 @@ def _format_session_line(session: SessionInfo) -> str:
     preview = session.preview or ""
     warning = f" !{session.warnings_count}" if session.warnings_count else ""
     return f"{timestamp} | {cwd} | {preview}{warning}"
-
-
-def _make_export_filename(session) -> str:
-    label = session.session_id or session.path.stem
-    safe = "".join(ch for ch in label if ch.isalnum() or ch in ("-", "_"))
-    if not safe:
-        safe = "session"
-    return f"{safe}.md"
 
 
 def _shorten_text(text: str, max_len: int) -> str:

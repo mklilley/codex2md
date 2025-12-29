@@ -12,7 +12,7 @@ from .export_md import ExportOptions, export_session_markdown, session_to_markdo
 from .filters import filter_sessions, sort_sessions
 from .models import Session, SessionInfo
 from .parser import parse_session
-from .utils import format_timestamp
+from .utils import build_export_basename, build_export_filenames, format_timestamp
 
 logger = configure_logging()
 
@@ -332,10 +332,12 @@ def _export_last_n(state: TuiState) -> str | None:
             include_diagnostics=state.settings.include_diagnostics,
             redact_paths=state.settings.redact_paths,
         )
+        parsed_sessions = [parse_session(info.path) for info in sessions]
+        bases = [build_export_basename(session.started_at, session.cwd) for session in parsed_sessions]
+        filenames = build_export_filenames(bases)
         exported = 0
-        for session_info in sessions:
-            session = parse_session(session_info.path)
-            out_path = out_dir_path / _make_export_filename(session)
+        for session, filename in zip(parsed_sessions, filenames, strict=True):
+            out_path = out_dir_path / filename
             export_session_markdown(session, options, out_path)
             exported += 1
         _show_message("Export > Last N", f"Exported {exported} sessions to {out_dir_path}")
@@ -430,11 +432,8 @@ def _resolve_export_options(settings: Settings) -> ExportOptions:
 
 
 def _make_export_filename(session: Session) -> str:
-    label = session.session_id or session.path.stem
-    safe = "".join(ch for ch in label if ch.isalnum() or ch in ("-", "_"))
-    if not safe:
-        safe = "session"
-    return f"{safe}.md"
+    base = build_export_basename(session.started_at, session.cwd)
+    return f"{base}.md"
 
 
 def _prompt_output_dir(settings: Settings) -> Path | str | None:
