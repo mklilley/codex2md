@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import calendar
-import os
 from pathlib import Path
 import pydoc
 from typing import Iterable, Sequence
@@ -19,10 +18,11 @@ logger = configure_logging()
 
 try:
     from prompt_toolkit.application import Application
+    from prompt_toolkit.filters import Condition, has_focus
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.layout import Layout
     from prompt_toolkit.layout.containers import HSplit
-    from prompt_toolkit.widgets import Label, RadioList
+    from prompt_toolkit.widgets import Label, RadioList, TextArea
     from prompt_toolkit.shortcuts import prompt
 
     HAS_PROMPT_TOOLKIT = True
@@ -167,6 +167,12 @@ def _search_sessions(state: TuiState) -> str | None:
     if not state.sessions:
         _show_message("Search", "No sessions found.")
         return "back"
+    if not HAS_PROMPT_TOOLKIT:
+        return _search_sessions_basic(state)
+    return _search_sessions_live(state)
+
+
+def _search_sessions_basic(state: TuiState) -> str | None:
     while True:
         query = _prompt_text("Search", "Search term")
         if query in ("back", "quit"):
@@ -181,6 +187,121 @@ def _search_sessions(state: TuiState) -> str | None:
         result = _session_list_menu(state, results, ["Search", query])
         if result == "quit":
             return "quit"
+
+
+def _search_sessions_live(state: TuiState) -> str | None:
+    query = ""
+    while True:
+        result, query = _run_search_screen(state, query)
+        if result in ("back", "quit"):
+            return result
+        if not isinstance(result, SessionInfo):
+            return "back"
+        label = result.session_id or result.path.name
+        action = _session_action_menu(state, result, ["Search", query, label])
+        if action == "quit":
+            return "quit"
+
+
+def _run_search_screen(state: TuiState, initial_query: str) -> tuple[SessionInfo | str, str]:
+    no_result_value = "__no_results__"
+    current_results: list[SessionInfo] = []
+    all_sessions = state.sessions
+
+    input_field = TextArea(prompt="Search: ", height=1, multiline=False)
+    if initial_query:
+        input_field.text = initial_query
+        input_field.buffer.cursor_position = len(initial_query)
+
+    results_label = Label("")
+    hint_label = Label("Enter: open | b: back | q: quit")
+    radio = RadioList([(no_result_value, "No matches")])
+
+    app: Application | None = None
+
+    def _apply_results() -> None:
+        nonlocal current_results
+        text = input_field.text.strip()
+        filtered = filter_sessions(all_sessions, query=text) if text else list(all_sessions)
+        filtered = sort_sessions(filtered)
+        current_results = filtered
+
+        if filtered:
+            options = [(idx, _format_session_line(session)) for idx, session in enumerate(filtered)]
+            radio.values = options
+            radio.current_value = options[0][0]
+            radio._selected_index = 0
+        else:
+            radio.values = [(no_result_value, "No matches")]
+            radio.current_value = no_result_value
+            radio._selected_index = 0
+
+        results_label.text = f"Results: {len(filtered)}"
+        if app is not None:
+            app.invalidate()
+
+    def _on_text_changed(_buffer) -> None:
+        _apply_results()
+
+    input_field.buffer.on_text_changed += _on_text_changed
+    _apply_results()
+
+    kb = KeyBindings()
+
+    @kb.add("enter", eager=True)
+    def _select(event) -> None:
+        if not current_results:
+            return
+        radio._handle_enter()
+        selected = radio.current_value
+        if selected == no_result_value:
+            return
+        event.app.exit(result=selected)
+
+    @kb.add("down", filter=has_focus(input_field))
+    def _focus_results(event) -> None:
+        event.app.layout.focus(radio)
+
+    top_of_results = Condition(lambda: radio._selected_index == 0)
+
+    @kb.add("up", filter=has_focus(radio) & top_of_results, eager=True)
+    def _focus_input_from_top(event) -> None:
+        event.app.layout.focus(input_field)
+
+    @kb.add("b", eager=True)
+    @kb.add("escape", eager=True)
+    def _go_back(event) -> None:
+        event.app.exit(result="back")
+
+    @kb.add("q", eager=True)
+    @kb.add("c-c", eager=True)
+    def _go_quit(event) -> None:
+        event.app.exit(result="quit")
+
+    layout = Layout(
+        HSplit(
+            [
+                Label("Search"),
+                Label(""),
+                input_field,
+                results_label,
+                Label(""),
+                radio,
+                Label(""),
+                hint_label,
+            ]
+        ),
+        focused_element=input_field,
+    )
+    app = Application(layout=layout, key_bindings=kb, full_screen=True)
+    result = app.run()
+    query = input_field.text.strip()
+
+    if result in ("back", "quit"):
+        return result, query
+    if isinstance(result, int) and 0 <= result < len(current_results):
+        return current_results[result], query
+    return "back", query
 
 
 def _export_last_n(state: TuiState) -> str | None:
