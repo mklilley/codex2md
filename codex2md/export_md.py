@@ -51,10 +51,24 @@ def _format_header(
     if session.commit_hash:
         lines.append(f"- Commit: {session.commit_hash}")
 
-    source_path = str(session.path)
+    source_path = session.path
+    source_text = str(source_path)
     if options.redact_paths:
-        source_path = _redact_text(source_path, Path.home())
-    lines.append(f"- Source: {source_path}")
+        source_text = _redact_text(source_text, Path.home())
+        lines.append(f"- Source: {source_text}")
+    else:
+        source_link = None
+        try:
+            source_link = source_path.resolve().as_uri()
+        except Exception:
+            try:
+                source_link = Path(source_text).resolve().as_uri()
+            except Exception:
+                source_link = None
+        if source_link:
+            lines.append(f"- Source: [{source_text}]({source_link})")
+        else:
+            lines.append(f"- Source: {source_text}")
     if options.include_diagnostics and session.parse_warnings:
         lines.append(f"- Warnings: {len(session.parse_warnings)}")
     lines.append("")
