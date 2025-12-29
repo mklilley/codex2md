@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 from .models import MalformedEvent, MessageEvent, ReasoningEvent, Session, ToolEvent
-from .utils import clean_user_message, format_timestamp
+from .utils import build_export_basename, clean_user_message, format_timestamp
 
 
 @dataclass
@@ -22,10 +22,14 @@ def _redact_text(text: str, home: Path) -> str:
     return text.replace(str(home), "~")
 
 
-def _format_header(session: Session, options: ExportOptions) -> list[str]:
+def _format_header(
+    session: Session,
+    options: ExportOptions,
+    title_override: str | None = None,
+) -> list[str]:
     lines: list[str] = []
-    session_label = session.session_id or session.path.name
-    lines.append(f"# Codex session {session_label}")
+    session_label = title_override or build_export_basename(session.started_at, session.cwd)
+    lines.append(f"# {session_label}")
     lines.append("")
 
     started = format_timestamp(session.started_at)
@@ -143,9 +147,13 @@ def _format_malformed(event: MalformedEvent) -> list[str]:
     return [f"> [Skipped malformed event: {event.description}]", ""]
 
 
-def session_to_markdown(session: Session, options: ExportOptions) -> str:
+def session_to_markdown(
+    session: Session,
+    options: ExportOptions,
+    title_override: str | None = None,
+) -> str:
     lines: list[str] = []
-    lines.extend(_format_header(session, options))
+    lines.extend(_format_header(session, options, title_override=title_override))
 
     current_message_role: str | None = None
     pending_reasoning: list[str] = []
@@ -197,6 +205,6 @@ def session_to_markdown(session: Session, options: ExportOptions) -> str:
 
 def export_session_markdown(session: Session, options: ExportOptions, out_path: Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    content = session_to_markdown(session, options)
+    content = session_to_markdown(session, options, title_override=out_path.stem)
     out_path.write_text(content, encoding="utf-8")
     return out_path
