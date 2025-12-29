@@ -56,8 +56,8 @@ def run_tui() -> int:
 def _main_menu(state: TuiState) -> str:
     while True:
         options = [
-            ("date", "Browse by date"),
             ("cwd", "Browse by working directory"),
+            ("date", "Browse by date"),
             ("search", "Search"),
             ("export_last", "Export last N sessions"),
             ("settings", "Settings"),
